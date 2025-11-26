@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Open-Meteo - Consulta de Clima</title>
+<style>
+:root{--bg:#0f1724;--card:#0b1220;--muted:#94a3b8;--accent:#7dd3fc;--glass:rgba(255,255,2
+55,0.03)}
+*{box-sizing:border-box}
+body{font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+Arial; margin:0; background:linear-gradient(180deg,#071226 0%, #071a2a 100%);
+color:#e6eef6; min-height:100vh; display:flex; align-items:center; justify-content:center;
+padding:24px}
+.app{width:100%; max-width:920px; background:linear-gradient(180deg,
+rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:12px; padding:20px;
+box-shadow:0 10px 30px rgba(2,6,23,0.6); display:grid; grid-template-columns:360px 1fr;
+gap:20px}
+.panel{background:var(--card); border-radius:10px; padding:16px}
+h1{margin:0 0 6px;font-size:18px}
+label{display:block;font-size:13px;color:var(--muted); margin-top:12px}
+input[type="text"], input[type="number"]{width:100%; padding:10px 12px;
+border-radius:8px; border:1px solid rgba(255,255,255,0.04); background:var(--glass);
+color:inherit}
+button{margin-top:12px;padding:10px
+12px;border-radius:8px;border:none;background:var(--accent); color:#06202b;
+font-weight:600; cursor:pointer}
+.small{font-size:13px;color:var(--muted)}
+.result{display:flex; flex-direction:column; gap:14px}
+.weather-card{background:linear-gradient(180deg, rgba(255,255,255,0.02),
+rgba(255,255,255,0.01)); padding:18px; border-radius:10px; display:flex; align-items:center;
+justify-content:space-between}
+.temp{font-size:48px; font-weight:700}
+.meta{color:var(--muted); font-size:14px}
+.history{max-height:260px; overflow:auto; margin-top:10px; display:flex;
+flex-direction:column; gap:8px}
+.history button{background:transparent; border:1px solid rgba(255,255,255,0.03);
+color:var(--muted); padding:8px; border-radius:8px; text-align:left}
+.footer{font-size:12px;color:var(--muted); margin-top:12px}
+.right{padding:8px 16px}
+.maplike{height:280px; background:linear-gradient(90deg,#03101a,#061426);
+border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--muted)}
+.coords{display:flex; gap:8px; margin-top:10px}
+@media (max-width:880px){.app{grid-template-columns:1fr; padding:12px}}
+</style>
+</head>
+<body>
+<div class="app" role="application" aria-label="Consulta de clima Open-Meteo">
+<aside class="panel" aria-labelledby="panelTitle">
+<h1 id="panelTitle">Buscar clima</h1>
+<p class="small">Usa ciudad o coordenadas. También puedes usar <strong>Mi
+ubicación</strong>.</p>
+<label for="city">Ciudad (ej: Mexico City)</label>
+<input id="city" type="text" placeholder="Escribe una ciudad y presiona Buscar" />
+<button id="searchCity">Buscar ciudad</button>
+<label for="lat">Latitud</label>
+<input id="lat" type="number" step="any" placeholder="Ej: 19.4326" />
+<label for="lon">Longitud</label>
+<input id="lon" type="number" step="any" placeholder="Ej: -99.1332" />
+<div class="coords">
+<button id="useLoc">Mi ubicación</button>
+<button id="getWeather">Consultar clima</button>
+</div>
+<div class="footer">Resultados guardados en el historial local. Haz clic en un registro
+para consultar de nuevo.</div>
+<h2 style="margin-top:14px;font-size:14px">Historial</h2>
+<div class="history" id="history" role="list" aria-label="Historial de consultas"></div>
+</aside>
+<main class="panel right" aria-live="polite">
+<div id="content" class="result">
+<div class="maplike" id="mapLike">Panel de visualización</div>
+<div id="weatherOutput" style="display:none">
+<div class="weather-card">
+<div>
+<div id="place" style="font-weight:700;font-size:16px">—</div>
+<div class="meta" id="time">—</div>
+</div>
+<div style="text-align:right">
+<div class="temp" id="temperature">--°C</div>
+<div class="meta" id="conditions">—</div>
+</div>
+</div>
+<div style="display:flex; gap:12px; margin-top:12px; align-items:center">
+<div style="flex:1">
+<div class="small">Viento</div>
+<div id="wind" class="meta">—</div>
+</div>
+<div style="flex:1">
+<div class="small">Dirección</div>
+<div id="windDir" class="meta">—</div>
+</div>
+<div style="flex:1">
+<div class="small">Fuente</div>
+<div class="meta">Open-Meteo</div>
+</div>
+</div>
+</div>
+<div id="message" class="small" style="color:var(--muted)">Introduce una ciudad o
+coordenadas y haz clic en "Consultar clima".</div>
+</div>
+</main>
+</div>
+<script>
+// index.html - App que usa Open-Meteo
+const searchCityBtn = document.getElementById('searchCity');
+const getWeatherBtn = document.getElementById('getWeather');
+const useLocBtn = document.getElementById('useLoc');
+const cityInput = document.getElementById('city');
+const latInput = document.getElementById('lat');
+const lonInput = document.getElementById('lon');
+const historyEl = document.getElementById('history');
+const messageEl = document.getElementById('message');
+const weatherOutput = document.getElementById('weatherOutput');
+const placeEl = document.getElementById('place');
+const temperatureEl = document.getElementById('temperature');
+const timeEl = document.getElementById('time');
+const conditionsEl = document.getElementById('conditions');
+const windEl = document.getElementById('wind');
+const windDirEl = document.getElementById('windDir');
+const mapLike = document.getElementById('mapLike');
+// Helpers
+function saveToHistory(entry){
+const hist = JSON.parse(localStorage.getItem('weather_history')||'[]');
+hist.unshift(entry);
+// keep max 12
+localStorage.setItem('weather_history', JSON.stringify(hist.slice(0,12)));
+renderHistory();
+}
+function renderHistory(){
+const hist = JSON.parse(localStorage.getItem('weather_history')||'[]');
+historyEl.innerHTML = '';
+hist.forEach((h, idx)=>{
+const btn = document.createElement('button');
+btn.type='button';
+btn.textContent = `${h.label || (h.lat+','+h.lon)} — ${h.temp !== undefined ?
+h.temp+'°C':''}`;
+btn.addEventListener('click', ()=>{
+latInput.value = h.lat; lonInput.value = h.lon; cityInput.value = h.label||'';
+fetchWeather(h.lat, h.lon, h.label);
+});
+historyEl.appendChild(btn);
+});
+if(hist.length===0){ historyEl.innerHTML = '<div class="small"
+style="color:var(--muted)">No hay historial aún.</div>' }
+}
+function degToCompass(num){
+const val = Math.floor((num/22.5)+0.5);
+const arr =
+["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","N
+NW"];
+return arr[(val % 16)];
+}
+// Geocoding: open-meteo geocoding API
+async function geocode(city){
+const q = encodeURIComponent(city);
+const url =
+`https://geocoding-api.open-meteo.com/v1/search?name=${q}&count=5&language=es`;
+const res = await fetch(url);
+if(!res.ok) throw new Error('Error geocoding');
+const data = await res.json();
+return data.results || [];
+}
+// Fetch weather current
+async function fetchWeather(lat, lon, label){
+try{
+messageEl.textContent = 'Consultando Open-Meteo...';
+weatherOutput.style.display='none';
+const url =
+`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=t
+rue&timezone=auto`;
+const r = await fetch(url);
+if(!r.ok) throw new Error('No se pudo obtener clima');
+const d = await r.json();
+if(!d.current_weather) throw new Error('No hay datos de clima');
+const cw = d.current_weather;
+// Mostrar
+placeEl.textContent = label || `${lat}, ${lon}`;
+temperatureEl.textContent = `${cw.temperature}°C`;
+timeEl.textContent = `Hora local: ${d.utc_offset ? d.utc_offset : (new
+Date().toLocaleString())}`;
+conditionsEl.textContent = `Velocidad: ${cw.windspeed} m/s`;
+windEl.textContent = `${cw.windspeed} m/s`;
+windDirEl.textContent = `${degToCompass(cw.winddirection)} (${cw.winddirection}°)`;
+messageEl.textContent = '';
+weatherOutput.style.display='block';
+mapLike.textContent = `Coordenadas: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+saveToHistory({lat, lon, temp: cw.temperature, label: label||'', ts: Date.now()});
+}catch(err){
+console.error(err);
+messageEl.textContent = 'Error: ' + (err.message || 'No se pudo consultar.');
+}
+}
+// Events
+searchCityBtn.addEventListener('click', async ()=>{
+const city = cityInput.value.trim();
+if(!city){ messageEl.textContent = 'Escribe el nombre de una ciudad.'; return }
+try{
+messageEl.textContent = 'Buscando ciudades...';
+const results = await geocode(city);
+if(results.length===0){ messageEl.textContent = 'No se encontraron resultados.'; return
+}
+// Si hay resultados, mostrar diálogo simple para elegir
+const opt = results.map((r,i)=>`${i+1}. ${r.name}${r.admin1?(', '+r.admin1):''} —
+${r.country} (${r.latitude.toFixed(4)}, ${r.longitude.toFixed(4)})`).join('
+');
+const choice = prompt('Resultados encontrados:
+'+opt+'
+Escribe el número de la opción que quieras usar (o Cancelar)');
+const idx = parseInt(choice) - 1;
+if(isNaN(idx) || idx<0 || idx>=results.length) { messageEl.textContent = 'Búsqueda
+cancelada o inválida.'; return }
+const sel = results[idx];
+latInput.value = sel.latitude; lonInput.value = sel.longitude; cityInput.value = sel.name;
+await fetchWeather(sel.latitude, sel.longitude, `${sel.name}${sel.admin1?(',
+'+sel.admin1):''} — ${sel.country}`);
+}catch(e){ messageEl.textContent = 'Error de geocoding.'; console.error(e) }
+});
+getWeatherBtn.addEventListener('click', ()=>{
+const lat = parseFloat(latInput.value);
+const lon = parseFloat(lonInput.value);
+const label = cityInput.value.trim();
+if(Number.isFinite(lat) && Number.isFinite(lon)){
+fetchWeather(lat, lon, label);
+} else {
+messageEl.textContent = 'Introduce coordenadas válidas o busca una ciudad.';
+}
+});
+useLocBtn.addEventListener('click', ()=>{
+if(!navigator.geolocation){ messageEl.textContent='Geolocalización no soportada en este
+navegador.'; return }
+messageEl.textContent = 'Obteniendo ubicación...';
+navigator.geolocation.getCurrentPosition(async (pos)=>{
+const lat = pos.coords.latitude; const lon = pos.coords.longitude;
+latInput.value = lat; lonInput.value = lon; cityInput.value = '';
+await fetchWeather(lat, lon, 'Mi ubicación');
+}, (err)=>{ messageEl.textContent = 'No se pudo obtener la ubicación.' });
+});
+// Init
+renderHistory();
+</script>
+</body>
+</html>
